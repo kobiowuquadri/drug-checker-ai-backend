@@ -20,18 +20,31 @@ export const verifyPassword = async (password : string, hashedPassword : string)
 }
 
 
-// generate token
-const SECRET_KEY = process.env.SECRET_KEY as string
+const getJwtSecret = (tokenType: 'access' | 'refresh' = 'access') => {
+  if (tokenType === 'refresh') {
+    return process.env.JWT_REFRESH_SECRET || process.env.SECRET_KEY || '';
+  }
 
-export const generateToken = (payload: object, expiresIn: jwt.SignOptions['expiresIn'] = '1d') => {
-  return jwt.sign(payload, SECRET_KEY, { expiresIn })
+  return process.env.JWT_ACCESS_SECRET || process.env.SECRET_KEY || '';
+}
+
+// generate token
+export const generateToken = (
+  payload: object,
+  expiresIn: jwt.SignOptions['expiresIn'] = '1d',
+  tokenType: 'access' | 'refresh' = 'access'
+) => {
+  return jwt.sign(payload, getJwtSecret(tokenType), { expiresIn })
 }
 
 
 // verify token
-export const verifyToken = (token: string): { success: boolean; decoded?: any; error?: string } => {
+export const verifyToken = (
+  token: string,
+  tokenType: 'access' | 'refresh' = 'access'
+): { success: boolean; decoded?: any; error?: string } => {
   try {
-    const decoded = jwt.verify(token, SECRET_KEY || '');
+    const decoded = jwt.verify(token, getJwtSecret(tokenType));
     return { success: true, decoded };
   } catch (error) {
     return { 

@@ -2,6 +2,7 @@ import express from 'express'
 import dotenv from 'dotenv'
 import { connectToDB } from './database/db.js' 
 import router from './routes/index.js'
+import './schemas/index.js'
 import morgan from 'morgan';
 import type { RequestHandler } from 'express';
 import cors from "cors"

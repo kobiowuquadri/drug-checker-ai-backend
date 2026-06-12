@@ -2,8 +2,9 @@ import { DataTypes, Model, Optional } from "sequelize";
 import sequelize from "../../database/db.js";
 
 // This is the attributes for the Auth model
-export interface AuthAttributes {
+export interface UserAttributes {
     id: number;
+    name: string;
     email: string;
     password: string;
     refreshToken: string;
@@ -13,11 +14,12 @@ export interface AuthAttributes {
 }
 
 // This is the creation attributes for the Auth model
-export interface AuthCreationAttributes extends Optional<AuthAttributes, "id"> {}
+export interface UserCreationAttributes extends Optional<UserAttributes, "id" | "refreshToken" | "refreshTokenExpiresAt" | "createdAt" | "updatedAt"> {}
 
-// This is the model for the Auth model
-export class Auth extends Model<AuthAttributes, AuthCreationAttributes> implements AuthAttributes {
+// This is the model for the User model
+export class User extends Model<UserAttributes, UserCreationAttributes> implements UserAttributes {
     declare id: number;
+    declare name: string;
     declare email: string;
     declare password: string;
     declare refreshToken: string;
@@ -27,15 +29,20 @@ export class Auth extends Model<AuthAttributes, AuthCreationAttributes> implemen
 }
 
 // This is the schema for the Auth model
-export const AuthSchema = {
+export const UserSchema = {
     id: {
         type: DataTypes.INTEGER,
         primaryKey: true,
         autoIncrement: true,
     },
+    name: {
+        type: DataTypes.STRING,
+        allowNull: false,
+    },
     email: {
         type: DataTypes.STRING,
         allowNull: false,
+        unique: true,
     },
     password: {
         type: DataTypes.STRING,
@@ -64,10 +71,11 @@ export const AuthSchema = {
 } as const;
 
 // Initialize and export the Sequelize model instance
-Auth.init(AuthSchema, {
+User.init(UserSchema, {
     sequelize,
-    modelName: "Auth",
-    tableName: "auths",
+    modelName: "User",
+    tableName: "users",
 });
 
-export { Auth as default };
+export { User as Auth };
+export { User as default };

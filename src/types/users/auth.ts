@@ -6,6 +6,7 @@ export interface BaseResponse {
 }
 
 export interface RegisterRequest {
+    name: string;
     email: string;
     password: string;
 }
@@ -18,3 +19,9 @@ export interface LoginRequest {
 }
 
 export type LoginResponse = BaseResponse;
+
+export interface RefreshTokenRequest {
+    refreshToken: string;
+}
+
+export type RefreshTokenResponse = BaseResponse;

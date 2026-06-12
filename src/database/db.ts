@@ -7,7 +7,7 @@ const sequelize = new Sequelize(
   config.database.password || '',
   {
     host: config.database.host,
-    port: Number(config.database.port) | 3306,
+    port: Number(config.database.port) || 3306,
     dialect: 'mysql',
     logging: false,
     pool: {

@@ -13,6 +13,11 @@ export const config = {
         host: process.env.DB_HOST || 'localhost',
         port: process.env.DB_PORT || 3306
     },
+    integrations: {
+        rxnavBaseUrl: process.env.RXNAV_BASE_URL || 'https://rxnav.nlm.nih.gov/REST',
+        geminiApiKey: process.env.GEMINI_API_KEY,
+        geminiModel: process.env.GEMINI_MODEL || 'gemini-2.5-flash'
+    },
     development: {
         username: process.env.DB_USER,
         password: process.env.DB_PASSWORD,

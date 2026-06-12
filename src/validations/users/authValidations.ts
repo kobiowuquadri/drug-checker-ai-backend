@@ -1,4 +1,13 @@
 export const registerValidation = {
+    name: {
+        in: 'body',
+        isString: true,
+        trim: true,
+        notEmpty: {
+            errorMessage: 'Name is required',
+        },
+        errorMessage: 'Invalid name',
+    },
     email: {
         in: 'body',
         isEmail: true,
@@ -12,6 +21,17 @@ export const registerValidation = {
             errorMessage: 'Password must be at least 8 characters long',
         },
         errorMessage: 'Invalid password',
+    }
+}
+
+export const refreshTokenValidation = {
+    refreshToken: {
+        in: 'body',
+        isString: true,
+        notEmpty: {
+            errorMessage: 'Refresh token is required',
+        },
+        errorMessage: 'Invalid refresh token',
     }
 }
 
