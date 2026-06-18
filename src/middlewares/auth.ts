@@ -16,7 +16,12 @@ const getAccessToken = (req: Request) => {
   return getTokenFromHeader(req) || req.cookies?.accessToken || null;
 };
 
+const getRefreshToken = (req: Request) => {
+  return req.cookies?.refreshToken || null;
+};
+
 const accessSecret = () => process.env.JWT_ACCESS_SECRET || process.env.SECRET_KEY || '';
+const refreshSecret = () => process.env.JWT_REFRESH_SECRET || process.env.SECRET_KEY || '';
 
 export const verify = (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -43,11 +48,23 @@ export const optionalVerify = (req: Request, res: Response, next: NextFunction) 
   try {
     const token = getAccessToken(req);
 
-    if (!token) {
+    if (token) {
+      return jwt.verify(token, accessSecret(), (err: any, decodedToken: any) => {
+        if (!err && decodedToken) {
+          (req as any).user = decodedToken;
+        }
+
+        return next();
+      });
+    }
+
+    const refreshToken = getRefreshToken(req);
+
+    if (!refreshToken) {
       return next();
     }
 
-    jwt.verify(token, accessSecret(), (err: any, decodedToken: any) => {
+    jwt.verify(refreshToken, refreshSecret(), (err: any, decodedToken: any) => {
       if (!err && decodedToken) {
         (req as any).user = decodedToken;
       }

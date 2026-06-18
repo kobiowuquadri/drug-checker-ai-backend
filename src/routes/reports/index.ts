@@ -8,6 +8,14 @@ import { reportGenerationValidation, reportUpdateValidation } from '../../valida
 export const reportRouter = express.Router()
 
 reportRouter.post('/generate', verify, validate(checkSchema(reportGenerationValidation as any)), generateReportController)
+reportRouter.get('/generate', verify, (req, res) => {
+  return res.status(405).json({
+    message: 'Use POST /api/reports/generate to generate a report',
+    success: false,
+    statusCode: 405,
+    data: {}
+  })
+})
 reportRouter.get('/', verify, getReportsController)
 reportRouter.get('/:id', verify, getReportController)
 reportRouter.patch('/:id', verify, validate(checkSchema(reportUpdateValidation as any)), updateReportController)

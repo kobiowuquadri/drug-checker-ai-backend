@@ -21,6 +21,8 @@ const buildSeveritySummary = (interactionResults: any[]) => {
   return summary;
 };
 
+const isInvalidId = (id: number) => !Number.isInteger(id) || id < 1;
+
 export const generateReportService = async (
   userId: number,
   data: GenerateReportRequest,
@@ -55,6 +57,10 @@ export const updateReportService = async (
   callback: (data: ReportResponse) => void
 ) => {
   try {
+    if (isInvalidId(reportId)) {
+      return callback(messageHandler("Invalid report id", false, BAD_REQUEST, {}));
+    }
+
     const report = await Report.findOne({ where: { id: reportId, userId } });
     if (!report) {
       return callback(messageHandler("Report not found", false, NOT_FOUND, {}));
@@ -86,6 +92,10 @@ export const getReportsService = async (userId: number, callback: (data: ReportR
 
 export const getReportService = async (userId: number, reportId: number, callback: (data: ReportResponse) => void) => {
   try {
+    if (isInvalidId(reportId)) {
+      return callback(messageHandler("Invalid report id", false, BAD_REQUEST, {}));
+    }
+
     const report = await Report.findOne({ where: { id: reportId, userId } });
     if (!report) {
       return callback(messageHandler("Report not found", false, NOT_FOUND, {}));
@@ -99,6 +109,10 @@ export const getReportService = async (userId: number, reportId: number, callbac
 
 export const deleteReportService = async (userId: number, reportId: number, callback: (data: ReportResponse) => void) => {
   try {
+    if (isInvalidId(reportId)) {
+      return callback(messageHandler("Invalid report id", false, BAD_REQUEST, {}));
+    }
+
     const report = await Report.findOne({ where: { id: reportId, userId } });
     if (!report) {
       return callback(messageHandler("Report not found", false, NOT_FOUND, {}));

@@ -245,7 +245,7 @@ Request rules:
 - Minimum 2 drugs
 - Maximum 5 drugs
 - Each drug requires `rxcui` and `name`
-- If a valid bearer token is provided, the result is auto-saved to that user's history
+- If a valid auth cookie or bearer token is provided, the result is auto-saved to that user's history
 
 ```json
 {
@@ -264,17 +264,14 @@ Request rules:
 
 The service generates all possible drug pairs, checks the local `drug_interactions` table in both directions, and returns:
 
-- `severity`
-- `effect`
-- `recommendation`
-- `source`
-- `aiExplanation`
 - `duplicateTherapies`
 - `safetySummary`
 - `aiSummary`
+- `interactions`: verified interaction records only
+- `historySaved`
 - `historyId`
 
-If no verified local interaction is found, `verified` is returned as `false` and Gemini is not called.
+Unverified pairs are not returned individually. Their count is available as `safetySummary.unverifiedPairs`.
 
 If multiple drugs are selected, every pair is checked. For example, 4 drugs creates 6 checks:
 

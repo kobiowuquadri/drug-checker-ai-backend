@@ -7,6 +7,7 @@ import { explainMedicationSafetySummary, explainVerifiedInteraction } from "../a
 import { resolveDrugIngredients } from "../drugs/rxnavService.js";
 import { Severity } from "../../constants/severity.js";
 import InteractionHistory from "../../schemas/history/interactionHistorySchema.js";
+import Auth from "../../schemas/users/authSchema.js";
 
 const generateDrugPairs = (drugs: SelectedDrug[]) => {
   const pairs: Array<[SelectedDrug, SelectedDrug]> = [];
@@ -178,21 +179,67 @@ const buildSafetySummary = (
   };
 };
 
-const saveInteractionHistory = async (userId: number | undefined, selectedDrugs: SelectedDrug[], results: any) => {
-  if (!userId) {
+const resolveHistoryUserId = async (userId: number | undefined, refreshToken: string | undefined) => {
+  if (userId) {
+    return userId;
+  }
+
+  if (!refreshToken) {
     return null;
   }
 
-  return InteractionHistory.create({
-    userId,
-    selectedDrugs,
-    results,
-  });
+  const user = await Auth.findOne({ where: { refreshToken } });
+
+  if (!user || (user.refreshTokenExpiresAt && new Date(user.refreshTokenExpiresAt) < new Date())) {
+    return null;
+  }
+
+  return user.id;
+};
+
+const saveInteractionHistory = async (
+  userId: number | undefined,
+  refreshToken: string | undefined,
+  selectedDrugs: SelectedDrug[],
+  results: any
+) => {
+  const resolvedUserId = await resolveHistoryUserId(userId, refreshToken);
+
+  if (!resolvedUserId) {
+    return { history: null, error: null };
+  }
+
+  try {
+    const history = await InteractionHistory.create({
+      userId: resolvedUserId,
+      selectedDrugs,
+      results,
+    });
+
+    return { history, error: null };
+  } catch (error) {
+    return { history: null, error };
+  }
+};
+
+const buildVerifiedInteractionResponse = (results: InteractionResult[]) => {
+  return results
+    .filter((result) => result.verified)
+    .map((result) => ({
+      drugA: result.drugA,
+      drugB: result.drugB,
+      severity: result.severity,
+      effect: result.effect,
+      recommendation: result.recommendation,
+      source: result.source,
+      aiExplanation: result.aiExplanation,
+    }));
 };
 
 export const checkInteractionsService = async (
   data: InteractionCheckRequest,
   userId: number | undefined,
+  refreshToken: string | undefined,
   callback: (data: InteractionResponse) => void
 ) => {
   try {
@@ -243,18 +290,24 @@ export const checkInteractionsService = async (
 
     const safetySummary = buildSafetySummary(drugs, results, duplicateTherapies);
     const aiSummary = await explainMedicationSafetySummary(drugs, results, duplicateTherapies, safetySummary);
+    const verifiedInteractions = buildVerifiedInteractionResponse(results);
     const responseData = {
       selectedDrugs: drugs,
       duplicateTherapies,
       safetySummary,
       aiSummary,
-      results,
+      interactions: verifiedInteractions,
     };
-    const savedHistory = await saveInteractionHistory(userId, drugs, responseData);
+    const savedHistory = await saveInteractionHistory(userId, refreshToken, drugs, responseData);
+
+    if (savedHistory.error) {
+      return callback(messageHandler("Interaction check completed, but history could not be saved.", false, INTERNAL_SERVER_ERROR, savedHistory.error));
+    }
 
     return callback(messageHandler("Interaction check completed successfully", true, SUCCESS, {
       ...responseData,
-      historyId: savedHistory?.id || null,
+      historySaved: Boolean(savedHistory.history),
+      historyId: savedHistory.history?.id || null,
     }));
   } catch (error) {
     return callback(messageHandler("An error occured while checking drug interactions.", false, INTERNAL_SERVER_ERROR, error));
