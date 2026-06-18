@@ -82,6 +82,7 @@ npm start
 
 ```bash
 PORT=5000
+CLIENT_URL=http://localhost:3000
 DB_HOST=localhost
 DB_PORT=3306
 DB_NAME=drug_checker_ai
@@ -91,7 +92,10 @@ JWT_ACCESS_SECRET=change_me_access_secret
 JWT_REFRESH_SECRET=change_me_refresh_secret
 GEMINI_API_KEY=
 GEMINI_MODEL=gemini-2.5-flash
+USE_GEMINI_PAIR_EXPLANATIONS=false
 RXNAV_BASE_URL=https://rxnav.nlm.nih.gov/REST
+AUTO_SEED_INTERACTIONS=true
+ADMIN_EMAILS=admin@example.com
 ```
 
 ## Base URLs
@@ -118,10 +122,27 @@ Most service responses follow the existing project response shape:
 }
 ```
 
-Protected routes require:
+Authentication uses HTTP-only cookies:
 
-```http
-Authorization: Bearer <accessToken>
+- `accessToken`
+- `refreshToken`
+
+Register, login, and refresh set these cookies automatically. Logout clears them. Protected routes read `accessToken` from cookies first, and still support `Authorization: Bearer <accessToken>` as a fallback for API testing.
+
+Browser clients must send credentials:
+
+```ts
+fetch("http://localhost:5000/api/users/profile", {
+  credentials: "include"
+})
+```
+
+Axios example:
+
+```ts
+axios.get("http://localhost:5000/api/users/profile", {
+  withCredentials: true
+})
 ```
 
 ## Authentication
@@ -130,6 +151,7 @@ Authorization: Bearer <accessToken>
 
 ```http
 POST /api/users/register
+Set-Cookie: accessToken, refreshToken
 ```
 
 ```json
@@ -144,6 +166,7 @@ POST /api/users/register
 
 ```http
 POST /api/users/login
+Set-Cookie: accessToken, refreshToken
 ```
 
 ```json
@@ -157,26 +180,24 @@ POST /api/users/login
 
 ```http
 POST /api/users/refresh-token
+Cookie: refreshToken=<refreshToken>
+Set-Cookie: accessToken, refreshToken
 ```
 
-```json
-{
-  "refreshToken": "<refreshToken>"
-}
-```
+No body is required when the `refreshToken` cookie is present. A body refresh token is still accepted as a fallback for API testing.
 
 ### Logout
 
 ```http
 POST /api/users/logout
-Authorization: Bearer <accessToken>
+Cookie: accessToken=<accessToken>; refreshToken=<refreshToken>
 ```
 
 ### Get Profile
 
 ```http
 GET /api/users/profile
-Authorization: Bearer <accessToken>
+Cookie: accessToken=<accessToken>
 ```
 
 ## Drugs
@@ -224,6 +245,7 @@ Request rules:
 - Minimum 2 drugs
 - Maximum 5 drugs
 - Each drug requires `rxcui` and `name`
+- If a valid bearer token is provided, the result is auto-saved to that user's history
 
 ```json
 {
@@ -247,12 +269,107 @@ The service generates all possible drug pairs, checks the local `drug_interactio
 - `recommendation`
 - `source`
 - `aiExplanation`
+- `duplicateTherapies`
+- `safetySummary`
+- `aiSummary`
+- `historyId`
 
 If no verified local interaction is found, `verified` is returned as `false` and Gemini is not called.
+
+If multiple drugs are selected, every pair is checked. For example, 4 drugs creates 6 checks:
+
+```text
+A + B
+A + C
+A + D
+B + C
+B + D
+C + D
+```
+
+Example multi-drug payload:
+
+```json
+{
+  "drugs": [
+    {
+      "rxcui": "5640",
+      "name": "Ibuprofen"
+    },
+    {
+      "rxcui": "1191",
+      "name": "Aspirin"
+    },
+    {
+      "rxcui": "11289",
+      "name": "Warfarin"
+    },
+    {
+      "rxcui": "29046",
+      "name": "Lisinopril"
+    }
+  ]
+}
+```
+
+Duplicate therapy detection is also included. For example, selecting two ibuprofen-containing products returns a duplicate warning even if no verified drug-drug interaction exists:
+
+```json
+{
+  "drugs": [
+    {
+      "rxcui": "1100070",
+      "name": "famotidine 26.6 MG / ibuprofen 800 MG Oral Tablet [Duexis]"
+    },
+    {
+      "rxcui": "206905",
+      "name": "ibuprofen 400 MG Oral Tablet [Ibu]"
+    }
+  ]
+}
+```
+
+Before checking the local database, the service also asks RxNav for each drug's ingredient concepts using `related.json?tty=IN+MIN+PIN`. This allows product RXCUIs, branded drugs, and clinical dose forms from search results to match ingredient-level seed records like `Ibuprofen` (`5640`) and `Aspirin` (`1191`).
+
+Example verified test payload:
+
+```json
+{
+  "drugs": [
+    {
+      "rxcui": "5640",
+      "name": "Ibuprofen"
+    },
+    {
+      "rxcui": "1191",
+      "name": "Aspirin"
+    }
+  ]
+}
+```
+
+Example product-to-ingredient payload that should also match the ibuprofen + aspirin seed row:
+
+```json
+{
+  "drugs": [
+    {
+      "rxcui": "1100070",
+      "name": "famotidine 26.6 MG / ibuprofen 800 MG Oral Tablet [Duexis]"
+    },
+    {
+      "rxcui": "1191",
+      "name": "Aspirin"
+    }
+  ]
+}
+```
 
 ## Interaction History
 
 All history routes are protected. Users can only access their own history.
+
+Interaction checks are also saved automatically when `/api/interactions/check` receives a valid bearer token.
 
 ### Create History
 
@@ -312,6 +429,7 @@ Authorization: Bearer <accessToken>
 ```json
 {
   "title": "Jane's Interaction Report",
+  "notes": "Patient asked for pharmacist review before taking these together.",
   "selectedDrugs": [
     {
       "rxcui": "5640",
@@ -328,6 +446,12 @@ Authorization: Bearer <accessToken>
 
 The report service calculates and stores a `severitySummary` from verified interaction results.
 
+New report fields:
+
+- `status`: `GENERATED`, `REVIEWED`, or `ARCHIVED`
+- `notes`: optional user notes
+- `pdfUrl`: nullable placeholder for future PDF generation
+
 ### List Reports
 
 ```http
@@ -342,11 +466,62 @@ GET /api/reports/:id
 Authorization: Bearer <accessToken>
 ```
 
+### Update Report
+
+```http
+PATCH /api/reports/:id
+Authorization: Bearer <accessToken>
+```
+
+```json
+{
+  "status": "REVIEWED",
+  "notes": "Reviewed with a pharmacist."
+}
+```
+
 ### Delete Report
 
 ```http
 DELETE /api/reports/:id
 Authorization: Bearer <accessToken>
+```
+
+## Admin Interaction Management
+
+Admin routes are protected by JWT and `ADMIN_EMAILS`.
+
+```env
+ADMIN_EMAILS=admin@example.com,owner@example.com
+```
+
+Create a verified interaction record:
+
+```http
+POST /api/admin/interactions
+Authorization: Bearer <adminAccessToken>
+```
+
+```json
+{
+  "drugAName": "Ibuprofen",
+  "drugBName": "Aspirin",
+  "drugARxcui": "5640",
+  "drugBRxcui": "1191",
+  "severity": "MODERATE",
+  "effect": "Combined use may increase the risk of gastrointestinal bleeding and may reduce aspirin's antiplatelet effect when taken at the same time.",
+  "recommendation": "Avoid routine combined use unless advised by a clinician.",
+  "source": "Admin verified data"
+}
+```
+
+Other admin endpoints:
+
+```http
+GET /api/admin/interactions
+GET /api/admin/interactions/:id
+PUT /api/admin/interactions/:id
+DELETE /api/admin/interactions/:id
 ```
 
 ## Sequelize Models
@@ -393,6 +568,9 @@ Authorization: Bearer <accessToken>
 - `selectedDrugs`
 - `interactionResults`
 - `severitySummary`
+- `status`
+- `notes`
+- `pdfUrl`
 - `createdAt`
 - `updatedAt`
 
@@ -426,6 +604,12 @@ Each seed row stores:
 ## Database Notes
 
 The app currently imports all Sequelize schemas and runs the existing `sequelize.sync()` flow on startup.
+
+By default, startup also idempotently seeds the local verified interaction rows. To disable that behavior:
+
+```bash
+AUTO_SEED_INTERACTIONS=false
+```
 
 Migration and seeder files are also included under:
 

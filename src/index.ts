@@ -14,6 +14,10 @@ dotenv.config();
 const port = process.env.PORT
 
 const app = express()
+const allowedOrigins = (process.env.CLIENT_URL || process.env.FRONTEND_URL || '')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean)
 
 //middleware
 app.use(express.json())
@@ -21,8 +25,16 @@ app.use(express.urlencoded({ extended: true }))
 app.use(morgan('dev') as RequestHandler)
 app.use(cookieParser())
 
- 
-app.use(cors())
+app.use(cors({
+    origin: (origin, callback) => {
+        if (!origin || !allowedOrigins.length || allowedOrigins.includes(origin)) {
+            return callback(null, true)
+        }
+
+        return callback(new Error('Not allowed by CORS'))
+    },
+    credentials: true
+}))
 
 
 //routes

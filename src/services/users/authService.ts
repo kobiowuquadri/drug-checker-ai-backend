@@ -92,6 +92,10 @@ export const loginService = async (data: LoginRequest, callback: (data: LoginRes
 
 export const refreshAccessTokenService = async (data: RefreshTokenRequest, callback: (data: RefreshTokenResponse) => void) => {
   try {
+    if (!data.refreshToken) {
+      return callback(messageHandler("Refresh token is required", false, BAD_REQUEST, {}));
+    }
+
     const tokenResult = verifyToken(data.refreshToken, 'refresh');
     if (!tokenResult.success) {
       return callback(messageHandler("Invalid refresh token", false, UNAUTHORIZED, {}));
@@ -106,22 +110,34 @@ export const refreshAccessTokenService = async (data: RefreshTokenRequest, callb
       return callback(messageHandler("Refresh token has expired", false, UNAUTHORIZED, {}));
     }
 
-    const accessToken = generateToken({ id: user.id, email: user.email }, '1d', 'access');
+    const {
+      accessToken,
+      refreshToken,
+      refreshTokenExpiresAt
+    } = buildTokens(user);
+
+    await user.update({ refreshToken, refreshTokenExpiresAt, updatedAt: new Date() });
 
     return callback(messageHandler("Access token refreshed successfully", true, SUCCESS, {
       accessToken,
-      refreshToken: user.refreshToken
+      refreshToken,
+      user: buildUserResponse(user)
     }));
   } catch (error) {
     return callback(messageHandler("An error occured while refreshing access token.", false, INTERNAL_SERVER_ERROR, error));
   }
 };
 
-export const logoutService = async (userId: number, callback: (data: BaseResponse) => void) => {
+export const logoutService = async (userId: number | undefined, refreshToken: string | undefined, callback: (data: BaseResponse) => void) => {
   try {
-    const user = await Auth.findByPk(userId);
+    const user = userId
+      ? await Auth.findByPk(userId)
+      : refreshToken
+        ? await Auth.findOne({ where: { refreshToken } })
+        : null;
+
     if (!user) {
-      return callback(messageHandler("User not found", false, NOT_FOUND, {}));
+      return callback(messageHandler("Logout successful", true, SUCCESS, {}));
     }
 
     await user.update({ refreshToken: '', refreshTokenExpiresAt: null as any, updatedAt: new Date() });

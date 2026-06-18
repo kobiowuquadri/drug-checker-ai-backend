@@ -34,6 +34,21 @@ export const up = async (queryInterface: QueryInterface) => {
       type: DataTypes.JSON,
       allowNull: false,
     },
+    status: {
+      type: DataTypes.ENUM("GENERATED", "REVIEWED", "ARCHIVED"),
+      allowNull: false,
+      defaultValue: "GENERATED",
+    },
+    notes: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      defaultValue: null,
+    },
+    pdfUrl: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      defaultValue: null,
+    },
     createdAt: {
       type: DataTypes.DATE,
       allowNull: false,

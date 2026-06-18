@@ -1,8 +1,9 @@
 import Report from "../../schemas/reports/reportSchema.js";
-import { GenerateReportRequest, ReportResponse } from "../../types/reports/report.js";
+import { GenerateReportRequest, ReportResponse, UpdateReportRequest } from "../../types/reports/report.js";
 import { BAD_REQUEST, INTERNAL_SERVER_ERROR, NOT_FOUND, SUCCESS } from "../../constants/statusCode.js";
 import { messageHandler } from "../../utils/index.js";
 import { Severity } from "../../constants/severity.js";
+import { ReportStatus } from "../../constants/reportStatus.js";
 
 const buildSeveritySummary = (interactionResults: any[]) => {
   const summary = {
@@ -33,6 +34,9 @@ export const generateReportService = async (
     const report = await Report.create({
       userId,
       title: data.title || "Drug Interaction Report",
+      notes: data.notes || null,
+      status: ReportStatus.GENERATED,
+      pdfUrl: null,
       selectedDrugs: data.selectedDrugs,
       interactionResults: data.interactionResults || [],
       severitySummary: buildSeveritySummary(data.interactionResults || []),
@@ -41,6 +45,29 @@ export const generateReportService = async (
     return callback(messageHandler("Report generated successfully", true, SUCCESS, report));
   } catch (error) {
     return callback(messageHandler("An error occured while generating report.", false, INTERNAL_SERVER_ERROR, error));
+  }
+};
+
+export const updateReportService = async (
+  userId: number,
+  reportId: number,
+  data: UpdateReportRequest,
+  callback: (data: ReportResponse) => void
+) => {
+  try {
+    const report = await Report.findOne({ where: { id: reportId, userId } });
+    if (!report) {
+      return callback(messageHandler("Report not found", false, NOT_FOUND, {}));
+    }
+
+    await report.update({
+      ...data,
+      updatedAt: new Date(),
+    });
+
+    return callback(messageHandler("Report updated successfully", true, SUCCESS, report));
+  } catch (error) {
+    return callback(messageHandler("An error occured while updating report.", false, INTERNAL_SERVER_ERROR, error));
   }
 };
 

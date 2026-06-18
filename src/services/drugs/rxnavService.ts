@@ -2,6 +2,7 @@ import axios from "axios";
 import { BAD_REQUEST, INTERNAL_SERVER_ERROR, SUCCESS } from "../../constants/statusCode.js";
 import { messageHandler } from "../../utils/index.js";
 import { DrugResponse } from "../../types/drugs/drug.js";
+import { SelectedDrug } from "../../types/interactions/interaction.js";
 
 const getRxNavBaseUrl = () => process.env.RXNAV_BASE_URL || "https://rxnav.nlm.nih.gov/REST";
 
@@ -45,6 +46,25 @@ const transformDrugDetailsResponse = (data: any) => {
   };
 };
 
+const transformRelatedIngredientResponse = (data: any) => {
+  const conceptGroups = data?.relatedGroup?.conceptGroup || [];
+  const concepts = conceptGroups.flatMap((group: any) => group?.conceptProperties || []);
+  const ingredients = new Map<string, SelectedDrug>();
+
+  concepts.forEach((concept: any) => {
+    const rxcui = cleanText(concept.rxcui);
+    const name = cleanText(concept.name);
+
+    if (!rxcui || !name || ingredients.has(rxcui)) {
+      return;
+    }
+
+    ingredients.set(rxcui, { rxcui, name });
+  });
+
+  return Array.from(ingredients.values());
+};
+
 export const searchDrugsService = async (query: string, callback: (data: DrugResponse) => void) => {
   try {
     if (!query || !query.trim()) {
@@ -75,5 +95,18 @@ export const getDrugDetailsService = async (rxcui: string, callback: (data: Drug
     return callback(messageHandler("Drug details fetched successfully", true, SUCCESS, transformDrugDetailsResponse(response.data)));
   } catch (error) {
     return callback(messageHandler("An error occured while fetching drug details.", false, INTERNAL_SERVER_ERROR, error));
+  }
+};
+
+export const resolveDrugIngredients = async (drug: SelectedDrug) => {
+  try {
+    const response = await axios.get(`${getRxNavBaseUrl()}/rxcui/${encodeURIComponent(drug.rxcui)}/related.json`, {
+      params: { tty: "IN+MIN+PIN" },
+    });
+    const ingredients = transformRelatedIngredientResponse(response.data);
+
+    return ingredients.length ? ingredients : [drug];
+  } catch (error) {
+    return [drug];
   }
 };

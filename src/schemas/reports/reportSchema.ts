@@ -1,5 +1,6 @@
 import { DataTypes, Model, Optional } from "sequelize";
 import sequelize from "../../database/db.js";
+import { ReportStatus } from "../../constants/reportStatus.js";
 
 export interface ReportAttributes {
   id: number;
@@ -8,11 +9,14 @@ export interface ReportAttributes {
   selectedDrugs: any[];
   interactionResults: any[];
   severitySummary: Record<string, number>;
+  status: ReportStatus;
+  notes: string | null;
+  pdfUrl: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
 
-export interface ReportCreationAttributes extends Optional<ReportAttributes, "id" | "createdAt" | "updatedAt"> {}
+export interface ReportCreationAttributes extends Optional<ReportAttributes, "id" | "status" | "notes" | "pdfUrl" | "createdAt" | "updatedAt"> {}
 
 export class Report extends Model<ReportAttributes, ReportCreationAttributes> implements ReportAttributes {
   declare id: number;
@@ -21,6 +25,9 @@ export class Report extends Model<ReportAttributes, ReportCreationAttributes> im
   declare selectedDrugs: any[];
   declare interactionResults: any[];
   declare severitySummary: Record<string, number>;
+  declare status: ReportStatus;
+  declare notes: string | null;
+  declare pdfUrl: string | null;
   declare createdAt: Date;
   declare updatedAt: Date;
 }
@@ -50,6 +57,21 @@ export const ReportSchema = {
   severitySummary: {
     type: DataTypes.JSON,
     allowNull: false,
+  },
+  status: {
+    type: DataTypes.ENUM(...Object.values(ReportStatus)),
+    allowNull: false,
+    defaultValue: ReportStatus.GENERATED,
+  },
+  notes: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    defaultValue: null,
+  },
+  pdfUrl: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    defaultValue: null,
   },
   createdAt: {
     type: DataTypes.DATE,

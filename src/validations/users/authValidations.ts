@@ -27,6 +27,7 @@ export const registerValidation = {
 export const refreshTokenValidation = {
     refreshToken: {
         in: 'body',
+        optional: true,
         isString: true,
         notEmpty: {
             errorMessage: 'Refresh token is required',

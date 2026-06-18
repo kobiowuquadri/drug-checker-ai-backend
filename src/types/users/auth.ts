@@ -21,7 +21,7 @@ export interface LoginRequest {
 export type LoginResponse = BaseResponse;
 
 export interface RefreshTokenRequest {
-    refreshToken: string;
+    refreshToken?: string;
 }
 
 export type RefreshTokenResponse = BaseResponse;

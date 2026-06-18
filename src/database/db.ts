@@ -25,6 +25,10 @@ export const connectToDB = async () => {
     console.log("Connected to the database Successfully.")
 
     await sequelize.sync()
+    if (process.env.AUTO_SEED_INTERACTIONS !== 'false') {
+      const { seedDrugInteractions } = await import('./seeders/seedDrugInteractions.js')
+      await seedDrugInteractions()
+    }
     
   } catch (error : any) {
     console.log("Unable to connect to the database:", error.message)

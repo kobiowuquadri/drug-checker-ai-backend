@@ -1,3 +1,5 @@
+import { ReportStatus } from "../../constants/reportStatus.js";
+
 export const reportGenerationValidation = {
   title: {
     in: 'body',
@@ -5,6 +7,13 @@ export const reportGenerationValidation = {
     isString: true,
     trim: true,
     errorMessage: 'Invalid report title',
+  },
+  notes: {
+    in: 'body',
+    optional: true,
+    isString: true,
+    trim: true,
+    errorMessage: 'Invalid report notes',
   },
   selectedDrugs: {
     in: 'body',
@@ -18,5 +27,31 @@ export const reportGenerationValidation = {
     in: 'body',
     isArray: true,
     errorMessage: 'Interaction results must be an array',
+  },
+}
+
+export const reportUpdateValidation = {
+  title: {
+    in: 'body',
+    optional: true,
+    isString: true,
+    trim: true,
+    errorMessage: 'Invalid report title',
+  },
+  notes: {
+    in: 'body',
+    optional: true,
+    isString: true,
+    trim: true,
+    errorMessage: 'Invalid report notes',
+  },
+  status: {
+    in: 'body',
+    optional: true,
+    isIn: {
+      options: [Object.values(ReportStatus)],
+      errorMessage: 'Status must be GENERATED, REVIEWED, or ARCHIVED',
+    },
+    errorMessage: 'Invalid report status',
   },
 }
