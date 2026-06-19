@@ -8,7 +8,6 @@ import { reportGenerationValidation, reportUpdateValidation } from '../../valida
 export const reportRouter = express.Router()
 
 reportRouter.post('/generate', verify, validate(checkSchema(reportGenerationValidation as any)), generateReportController)
-reportRouter.get('/generate', verify, generateReportController) 
 reportRouter.get('/', verify, getReportsController)
 reportRouter.get('/:id', verify, getReportController)
 reportRouter.patch('/:id', verify, validate(checkSchema(reportUpdateValidation as any)), updateReportController)
