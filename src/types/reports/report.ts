@@ -3,10 +3,11 @@ import { InteractionResult, SelectedDrug } from "../interactions/interaction.js"
 import { ReportStatus } from "../../constants/reportStatus.js";
 
 export interface GenerateReportRequest {
+  historyId?: number;
   title?: string;
   notes?: string;
-  selectedDrugs: SelectedDrug[];
-  interactionResults: InteractionResult[];
+  selectedDrugs?: SelectedDrug[];
+  interactionResults?: InteractionResult[];
 }
 
 export interface UpdateReportRequest {

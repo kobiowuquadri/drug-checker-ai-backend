@@ -425,23 +425,21 @@ Authorization: Bearer <accessToken>
 
 ```json
 {
+  "historyId": 12,
   "title": "Jane's Interaction Report",
-  "notes": "Patient asked for pharmacist review before taking these together.",
-  "selectedDrugs": [
-    {
-      "rxcui": "5640",
-      "name": "Ibuprofen"
-    },
-    {
-      "rxcui": "1191",
-      "name": "Aspirin"
-    }
-  ],
-  "interactionResults": []
+  "notes": "Patient asked for pharmacist review before taking these together."
 }
 ```
 
-The report service calculates and stores a `severitySummary` from verified interaction results.
+Preferred flow:
+
+1. Run `/api/interactions/check` while logged in.
+2. Use the returned `historyId`.
+3. Generate the report from that history id.
+
+The report service loads the user's own interaction history, copies the selected drugs and verified interactions, then stores a `severitySummary`.
+
+Direct report generation with `selectedDrugs` and `interactionResults` is still supported for testing, but `historyId` is the cleaner app flow.
 
 New report fields:
 

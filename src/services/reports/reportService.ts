@@ -4,6 +4,7 @@ import { BAD_REQUEST, INTERNAL_SERVER_ERROR, NOT_FOUND, SUCCESS } from "../../co
 import { messageHandler } from "../../utils/index.js";
 import { Severity } from "../../constants/severity.js";
 import { ReportStatus } from "../../constants/reportStatus.js";
+import InteractionHistory from "../../schemas/history/interactionHistorySchema.js";
 
 const buildSeveritySummary = (interactionResults: any[]) => {
   const summary = {
@@ -59,13 +60,52 @@ const formatReportDetail = (report: Report) => ({
   updatedAt: report.updatedAt,
 });
 
+const extractHistoryReportData = (history: InteractionHistory) => {
+  const storedResults: any = history.results || {};
+  const rawInteractions = storedResults.interactions || storedResults.results || [];
+  const interactions = Array.isArray(rawInteractions)
+    ? rawInteractions.filter((interaction: any) => interaction.verified !== false && interaction.severity).map(slimInteraction)
+    : [];
+
+  return {
+    selectedDrugs: history.selectedDrugs || storedResults.selectedDrugs || [],
+    interactionResults: interactions,
+    severitySummary: storedResults.safetySummary?.severitySummary || buildSeveritySummary(interactions),
+  };
+};
+
+const resolveReportSource = async (userId: number, data: GenerateReportRequest) => {
+  if (data.historyId) {
+    const history = await InteractionHistory.findOne({ where: { id: data.historyId, userId } });
+
+    if (!history) {
+      return { error: "Interaction history not found", selectedDrugs: [], interactionResults: [], severitySummary: null };
+    }
+
+    return { error: null, ...extractHistoryReportData(history) };
+  }
+
+  return {
+    error: null,
+    selectedDrugs: data.selectedDrugs || [],
+    interactionResults: data.interactionResults || [],
+    severitySummary: buildSeveritySummary(data.interactionResults || []),
+  };
+};
+
 export const generateReportService = async (
   userId: number,
   data: GenerateReportRequest,
   callback: (data: ReportResponse) => void
 ) => {
   try {
-    if (!data.selectedDrugs || data.selectedDrugs.length < 2 || data.selectedDrugs.length > 5) {
+    const reportSource = await resolveReportSource(userId, data);
+
+    if (reportSource.error) {
+      return callback(messageHandler(reportSource.error, false, NOT_FOUND, {}));
+    }
+
+    if (!reportSource.selectedDrugs || reportSource.selectedDrugs.length < 2 || reportSource.selectedDrugs.length > 5) {
       return callback(messageHandler("Selected drugs must contain 2 to 5 drugs", false, BAD_REQUEST, {}));
     }
 
@@ -75,9 +115,9 @@ export const generateReportService = async (
       notes: data.notes || null,
       status: ReportStatus.GENERATED,
       pdfUrl: null,
-      selectedDrugs: data.selectedDrugs,
-      interactionResults: data.interactionResults || [],
-      severitySummary: buildSeveritySummary(data.interactionResults || []),
+      selectedDrugs: reportSource.selectedDrugs,
+      interactionResults: reportSource.interactionResults || [],
+      severitySummary: reportSource.severitySummary || buildSeveritySummary(reportSource.interactionResults || []),
     });
 
     return callback(messageHandler("Report generated successfully", true, SUCCESS, formatReportDetail(report)));
