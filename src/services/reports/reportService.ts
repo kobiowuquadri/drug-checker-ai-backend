@@ -13,7 +13,7 @@ const buildSeveritySummary = (interactionResults: any[]) => {
   };
 
   interactionResults.forEach((result) => {
-    if (result?.verified && result?.severity && result.severity in summary) {
+    if (result?.severity && result.severity in summary) {
       summary[result.severity as Severity] += 1;
     }
   });
@@ -22,6 +22,42 @@ const buildSeveritySummary = (interactionResults: any[]) => {
 };
 
 const isInvalidId = (id: number) => !Number.isInteger(id) || id < 1;
+
+const slimInteraction = (interaction: any) => ({
+  drugA: interaction.drugA,
+  drugB: interaction.drugB,
+  severity: interaction.severity,
+  effect: interaction.effect,
+  recommendation: interaction.recommendation,
+  source: interaction.source,
+  aiExplanation: interaction.aiExplanation,
+});
+
+const formatReportListItem = (report: Report) => ({
+  id: report.id,
+  title: report.title,
+  status: report.status,
+  notes: report.notes,
+  selectedDrugs: report.selectedDrugs,
+  severitySummary: report.severitySummary,
+  interactionCount: Array.isArray(report.interactionResults) ? report.interactionResults.length : 0,
+  pdfUrl: report.pdfUrl,
+  createdAt: report.createdAt,
+  updatedAt: report.updatedAt,
+});
+
+const formatReportDetail = (report: Report) => ({
+  id: report.id,
+  title: report.title,
+  status: report.status,
+  notes: report.notes,
+  selectedDrugs: report.selectedDrugs,
+  severitySummary: report.severitySummary,
+  interactions: Array.isArray(report.interactionResults) ? report.interactionResults.map(slimInteraction) : [],
+  pdfUrl: report.pdfUrl,
+  createdAt: report.createdAt,
+  updatedAt: report.updatedAt,
+});
 
 export const generateReportService = async (
   userId: number,
@@ -44,7 +80,7 @@ export const generateReportService = async (
       severitySummary: buildSeveritySummary(data.interactionResults || []),
     });
 
-    return callback(messageHandler("Report generated successfully", true, SUCCESS, report));
+    return callback(messageHandler("Report generated successfully", true, SUCCESS, formatReportDetail(report)));
   } catch (error) {
     return callback(messageHandler("An error occured while generating report.", false, INTERNAL_SERVER_ERROR, error));
   }
@@ -71,7 +107,7 @@ export const updateReportService = async (
       updatedAt: new Date(),
     });
 
-    return callback(messageHandler("Report updated successfully", true, SUCCESS, report));
+    return callback(messageHandler("Report updated successfully", true, SUCCESS, formatReportDetail(report)));
   } catch (error) {
     return callback(messageHandler("An error occured while updating report.", false, INTERNAL_SERVER_ERROR, error));
   }
@@ -84,7 +120,7 @@ export const getReportsService = async (userId: number, callback: (data: ReportR
       order: [["createdAt", "DESC"]],
     });
 
-    return callback(messageHandler("Reports fetched successfully", true, SUCCESS, reports));
+    return callback(messageHandler("Reports fetched successfully", true, SUCCESS, reports.map(formatReportListItem)));
   } catch (error) {
     return callback(messageHandler("An error occured while fetching reports.", false, INTERNAL_SERVER_ERROR, error));
   }
@@ -101,7 +137,7 @@ export const getReportService = async (userId: number, reportId: number, callbac
       return callback(messageHandler("Report not found", false, NOT_FOUND, {}));
     }
 
-    return callback(messageHandler("Report fetched successfully", true, SUCCESS, report));
+    return callback(messageHandler("Report fetched successfully", true, SUCCESS, formatReportDetail(report)));
   } catch (error) {
     return callback(messageHandler("An error occured while fetching report.", false, INTERNAL_SERVER_ERROR, error));
   }

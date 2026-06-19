@@ -3,6 +3,51 @@ import { CreateHistoryRequest, HistoryResponse } from "../../types/history/histo
 import { BAD_REQUEST, INTERNAL_SERVER_ERROR, NOT_FOUND, SUCCESS } from "../../constants/statusCode.js";
 import { messageHandler } from "../../utils/index.js";
 
+const slimInteraction = (interaction: any) => ({
+  drugA: interaction.drugA,
+  drugB: interaction.drugB,
+  severity: interaction.severity,
+  effect: interaction.effect,
+  recommendation: interaction.recommendation,
+  source: interaction.source,
+  aiExplanation: interaction.aiExplanation,
+});
+
+const extractHistoryPayload = (history: InteractionHistory) => {
+  const storedResults: any = history.results || {};
+  const rawInteractions = Array.isArray(storedResults)
+    ? storedResults
+    : storedResults.interactions || storedResults.results || [];
+  const interactions = Array.isArray(rawInteractions)
+    ? rawInteractions.filter((interaction: any) => interaction.verified !== false && interaction.severity).map(slimInteraction)
+    : [];
+
+  return {
+    id: history.id,
+    selectedDrugs: history.selectedDrugs || storedResults.selectedDrugs || [],
+    duplicateTherapies: storedResults.duplicateTherapies || [],
+    safetySummary: storedResults.safetySummary || null,
+    aiSummary: storedResults.aiSummary || null,
+    interactions,
+    createdAt: history.createdAt,
+    updatedAt: history.updatedAt,
+  };
+};
+
+const formatHistoryListItem = (history: InteractionHistory) => {
+  const payload = extractHistoryPayload(history);
+
+  return {
+    id: payload.id,
+    selectedDrugs: payload.selectedDrugs,
+    safetySummary: payload.safetySummary,
+    interactionCount: payload.interactions.length,
+    duplicateTherapyCount: payload.duplicateTherapies.length,
+    createdAt: payload.createdAt,
+    updatedAt: payload.updatedAt,
+  };
+};
+
 export const createHistoryService = async (
   userId: number,
   data: CreateHistoryRequest,
@@ -19,7 +64,7 @@ export const createHistoryService = async (
       results: data.results || [],
     });
 
-    return callback(messageHandler("Interaction history created successfully", true, SUCCESS, history));
+    return callback(messageHandler("Interaction history created successfully", true, SUCCESS, extractHistoryPayload(history)));
   } catch (error) {
     return callback(messageHandler("An error occured while creating interaction history.", false, INTERNAL_SERVER_ERROR, error));
   }
@@ -32,7 +77,7 @@ export const getHistoriesService = async (userId: number, callback: (data: Histo
       order: [["createdAt", "DESC"]],
     });
 
-    return callback(messageHandler("Interaction histories fetched successfully", true, SUCCESS, histories));
+    return callback(messageHandler("Interaction histories fetched successfully", true, SUCCESS, histories.map(formatHistoryListItem)));
   } catch (error) {
     return callback(messageHandler("An error occured while fetching interaction histories.", false, INTERNAL_SERVER_ERROR, error));
   }
@@ -45,7 +90,7 @@ export const getHistoryService = async (userId: number, historyId: number, callb
       return callback(messageHandler("Interaction history not found", false, NOT_FOUND, {}));
     }
 
-    return callback(messageHandler("Interaction history fetched successfully", true, SUCCESS, history));
+    return callback(messageHandler("Interaction history fetched successfully", true, SUCCESS, extractHistoryPayload(history)));
   } catch (error) {
     return callback(messageHandler("An error occured while fetching interaction history.", false, INTERNAL_SERVER_ERROR, error));
   }
