@@ -32,6 +32,11 @@ export const connectToDB = async () => {
       const { seedDrugInteractions } = await import('./seeders/seedDrugInteractions.js')
       await seedDrugInteractions()
     }
+
+    if (process.env.AUTO_SEED_MEDICATIONS !== 'false') {
+      const { seedMedications } = await import('./seeders/seedMedications.js')
+      await seedMedications()
+    }
     
   } catch (error : any) {
     console.log("Unable to connect to the database:", error.message)

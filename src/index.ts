@@ -20,8 +20,8 @@ const allowedOrigins = (process.env.CLIENT_URL || process.env.FRONTEND_URL || ''
   .filter(Boolean)
 
 //middleware
-app.use(express.json())
-app.use(express.urlencoded({ extended: true }))
+app.use(express.json({ limit: "5mb" }))
+app.use(express.urlencoded({ extended: true, limit: "5mb" }))
 app.use(morgan('dev') as RequestHandler)
 app.use(cookieParser())
 
