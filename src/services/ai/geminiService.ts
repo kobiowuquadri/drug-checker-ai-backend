@@ -74,6 +74,87 @@ export const identifyMedicationFromImage = async (
   }
 };
 
+// ── AI interaction assessment for pairs not in local DB ──────────────────────
+
+const AI_ASSESS_PROMPT = (drugA: SelectedDrug, drugB: SelectedDrug) => `You are a clinical pharmacologist. Assess the known pharmacological interaction between these two medications.
+
+Drug A: ${drugA.name}
+Drug B: ${drugB.name}
+
+Based on established pharmacology, known mechanisms, and medical literature, provide your assessment.
+
+Respond in EXACTLY this format — 4 lines, nothing else:
+SEVERITY: [NONE | LOW | MODERATE | HIGH]
+EFFECT: [one clear sentence describing the interaction, or "No clinically significant interaction identified."]
+RECOMMENDATION: [one clear sentence for the patient or clinician]
+EXPLANATION: [2-3 sentences explaining the mechanism, clinical relevance, and what to monitor]
+
+Severity definitions:
+NONE = no known clinically significant interaction
+LOW = minor interaction, generally safe with routine monitoring
+MODERATE = clinically relevant, may require dose adjustment or closer monitoring
+HIGH = significant risk, avoid concurrent use or requires specialist management`;
+
+type AiAssessment = {
+  severity: "NONE" | "LOW" | "MODERATE" | "HIGH";
+  effect: string;
+  recommendation: string;
+  explanation: string;
+};
+
+function parseAssessmentResponse(raw: string): AiAssessment | null {
+  let severity: AiAssessment["severity"] = "NONE";
+  let effect = "";
+  let recommendation = "";
+  let explanation = "";
+
+  for (const line of raw.split("\n").map((l) => l.trim()).filter(Boolean)) {
+    const colon = line.indexOf(":");
+    if (colon === -1) continue;
+    const key = line.slice(0, colon).trim().toUpperCase();
+    const val = line.slice(colon + 1).trim();
+
+    if (key === "SEVERITY") {
+      const s = val.toUpperCase() as AiAssessment["severity"];
+      if (["NONE", "LOW", "MODERATE", "HIGH"].includes(s)) severity = s;
+    } else if (key === "EFFECT") {
+      effect = val;
+    } else if (key === "RECOMMENDATION") {
+      recommendation = val;
+    } else if (key === "EXPLANATION") {
+      explanation = val;
+    }
+  }
+
+  if (!effect || !recommendation) return null;
+  return { severity, effect, recommendation, explanation };
+}
+
+export const assessUnverifiedInteraction = async (
+  drugA: SelectedDrug,
+  drugB: SelectedDrug
+): Promise<AiAssessment | null> => {
+  if (!process.env.GEMINI_API_KEY) return null;
+
+  try {
+    const response = await axios.post(
+      getGeminiEndpoint(),
+      {
+        systemInstruction: {
+          parts: [{ text: "You are a clinical pharmacologist providing accurate pharmacological interaction assessments based on established medical literature." }],
+        },
+        contents: [{ parts: [{ text: AI_ASSESS_PROMPT(drugA, drugB) }] }],
+        generationConfig: { temperature: 0.1, topP: 0.75, maxOutputTokens: 400 },
+      },
+      { params: { key: process.env.GEMINI_API_KEY } }
+    );
+
+    return parseAssessmentResponse(extractGeminiText(response.data));
+  } catch {
+    return null;
+  }
+};
+
 // ── Interaction pair explanation ──────────────────────────────────────────────
 
 const buildPairPrompt = (drugA: SelectedDrug, drugB: SelectedDrug, interaction: DrugInteraction) => {

@@ -15,6 +15,7 @@ export interface InteractionResult {
   matchedDrugA?: SelectedDrug;
   matchedDrugB?: SelectedDrug;
   verified: boolean;
+  isAiAssessed?: boolean;
   severity: string | null;
   effect: string;
   recommendation: string;

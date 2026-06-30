@@ -3,7 +3,7 @@ import DrugInteraction from "../../schemas/interactions/drugInteractionSchema.js
 import { BAD_REQUEST, INTERNAL_SERVER_ERROR, SUCCESS } from "../../constants/statusCode.js";
 import { messageHandler } from "../../utils/index.js";
 import { DuplicateTherapyWarning, InteractionCheckRequest, InteractionResponse, InteractionResult, SafetySummary, SelectedDrug } from "../../types/interactions/interaction.js";
-import { explainMedicationSafetySummary, explainVerifiedInteraction } from "../ai/geminiService.js";
+import { assessUnverifiedInteraction, explainMedicationSafetySummary, explainVerifiedInteraction } from "../ai/geminiService.js";
 import { resolveDrugIngredients } from "../drugs/rxnavService.js";
 import { Severity } from "../../constants/severity.js";
 import InteractionHistory from "../../schemas/history/interactionHistorySchema.js";
@@ -140,7 +140,8 @@ const buildSafetySummary = (
   let highestSeverity: SafetySummary["highestSeverity"] = null;
 
   results.forEach((result) => {
-    if (result.verified && result.severity && result.severity in severitySummary) {
+    const countable = (result.verified || result.isAiAssessed) && result.severity && result.severity in severitySummary;
+    if (countable) {
       severitySummary[result.severity as Severity] += 1;
 
       if (!highestSeverity || severityRank[result.severity as Severity] > severityRank[highestSeverity]) {
@@ -157,7 +158,7 @@ const buildSafetySummary = (
     }
   });
 
-  const verifiedInteractions = results.filter((result) => result.verified).length;
+  const verifiedInteractions = results.filter((result) => result.verified || result.isAiAssessed).length;
   const unverifiedPairs = results.length - verifiedInteractions;
   const actionMessage = highestSeverity === Severity.HIGH
     ? "High severity findings were detected. Consult a clinician before combining these medications."
@@ -224,7 +225,7 @@ const saveInteractionHistory = async (
 
 const buildVerifiedInteractionResponse = (results: InteractionResult[]) => {
   return results
-    .filter((result) => result.verified)
+    .filter((result) => result.verified || result.isAiAssessed)
     .map((result) => ({
       drugA: result.drugA,
       drugB: result.drugB,
@@ -233,6 +234,7 @@ const buildVerifiedInteractionResponse = (results: InteractionResult[]) => {
       recommendation: result.recommendation,
       source: result.source,
       aiExplanation: result.aiExplanation,
+      isAiGenerated: result.isAiAssessed ?? false,
     }));
 };
 
@@ -258,16 +260,35 @@ export const checkInteractionsService = async (
       const match = await findInteraction(drugA, drugB, normalizedDrugs);
 
       if (!match) {
-        results.push({
-          drugA,
-          drugB,
-          verified: false,
-          severity: null,
-          effect: "No verified interaction found in the local interaction database.",
-          recommendation: "Consult a qualified healthcare professional before combining medications.",
-          source: "Local interaction database",
-          aiExplanation: null,
-        });
+        const aiAssessment = await assessUnverifiedInteraction(drugA, drugB);
+
+        if (aiAssessment && aiAssessment.severity !== "NONE") {
+          results.push({
+            drugA,
+            drugB,
+            verified: false,
+            isAiAssessed: true,
+            severity: aiAssessment.severity,
+            effect: aiAssessment.effect,
+            recommendation: aiAssessment.recommendation,
+            source: "AI Analysis",
+            aiExplanation: aiAssessment.explanation,
+          });
+        } else {
+          results.push({
+            drugA,
+            drugB,
+            verified: false,
+            isAiAssessed: false,
+            severity: null,
+            effect: aiAssessment
+              ? "No clinically significant interaction identified for this combination."
+              : "No verified interaction found in the local database.",
+            recommendation: "Always consult a qualified healthcare professional or pharmacist before combining medications.",
+            source: "AI Analysis",
+            aiExplanation: null,
+          });
+        }
         continue;
       }
 
