@@ -1,4 +1,5 @@
 import axios from "axios";
+import { identifyMedicationByBarcode } from "../ai/geminiService.js";
 
 interface BarcodeResult {
   medicationName: string | null;
@@ -76,5 +77,19 @@ export async function lookupBarcodeService(barcodeValue: string): Promise<Barcod
   const fda = fdaResult.status === "fulfilled" ? fdaResult.value : null;
   const rxnav = rxNavResult.status === "fulfilled" ? rxNavResult.value : null;
 
-  return fda ?? rxnav ?? { medicationName: null, genericName: null, rxcui: null, source: "none" };
+  if (fda || rxnav) return fda ?? rxnav!;
+
+  // Neither US database has this barcode (common for non-US products).
+  // Try Gemini as a last resort — it may recognise common international barcodes.
+  const gemini = await identifyMedicationByBarcode(barcodeValue);
+  if (gemini.medicationName || gemini.genericName) {
+    return {
+      medicationName: gemini.medicationName,
+      genericName: gemini.genericName,
+      rxcui: null,
+      source: "AI (Gemini)",
+    };
+  }
+
+  return { medicationName: null, genericName: null, rxcui: null, source: "none" };
 }

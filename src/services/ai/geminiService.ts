@@ -25,21 +25,26 @@ function parseScanResponse(raw: string): { medicationName: string; genericName: 
   let medicationName = "UNKNOWN";
   let genericName = "UNKNOWN";
 
-  for (const line of raw.split("\n").map((l) => l.trim()).filter(Boolean)) {
-    const upper = line.toUpperCase();
-    if (upper.startsWith("BRAND:")) {
-      const val = line.slice(line.indexOf(":") + 1).trim();
-      if (val && val.toUpperCase() !== "UNKNOWN") medicationName = val;
-    } else if (upper.startsWith("GENERIC:")) {
-      const val = line.slice(line.indexOf(":") + 1).trim();
-      if (val && val.toUpperCase() !== "UNKNOWN") genericName = val;
+  // Strip markdown formatting Gemini sometimes adds
+  const cleaned = raw.replace(/\*\*/g, "").replace(/\*/g, "").replace(/#+\s*/g, "").trim();
+
+  for (const line of cleaned.split("\n").map((l) => l.trim()).filter(Boolean)) {
+    const colon = line.indexOf(":");
+    if (colon === -1) continue;
+    const key = line.slice(0, colon).trim().toUpperCase();
+    const val = line.slice(colon + 1).trim();
+
+    if (key === "BRAND") {
+      if (val && val.toUpperCase() !== "UNKNOWN" && val.length >= 2) medicationName = val;
+    } else if (key === "GENERIC") {
+      if (val && val.toUpperCase() !== "UNKNOWN" && val.length >= 2) genericName = val;
     }
   }
 
-  // Fallback: if Gemini ignored the format and returned a plain name
+  // Fallback: if Gemini returned a plain sentence without the required format
   if (medicationName === "UNKNOWN" && genericName === "UNKNOWN") {
-    const plain = raw.trim().split("\n")[0].trim();
-    if (plain && !plain.includes(":")) medicationName = plain;
+    const lines = cleaned.split("\n").map((l) => l.trim()).filter((l) => l.length > 3 && !l.includes(":"));
+    if (lines.length > 0) medicationName = lines[0];
   }
 
   return { medicationName, genericName };
@@ -71,6 +76,43 @@ export const identifyMedicationFromImage = async (
     return parseScanResponse(extractGeminiText(response.data));
   } catch {
     return { medicationName: "UNKNOWN", genericName: "UNKNOWN" };
+  }
+};
+
+// ── Barcode fallback: identify medication from barcode number ─────────────────
+
+export const identifyMedicationByBarcode = async (
+  barcodeValue: string
+): Promise<{ medicationName: string | null; genericName: string | null }> => {
+  if (!process.env.GEMINI_API_KEY) return { medicationName: null, genericName: null };
+
+  const prompt = `A pharmaceutical product has this barcode: ${barcodeValue}
+
+If you recognize this product barcode from your training data, identify the medication.
+
+Respond in EXACTLY this format — two lines only:
+BRAND: [brand/product name or UNKNOWN]
+GENERIC: [active ingredient(s) or UNKNOWN]
+
+If you do not know this specific barcode, return UNKNOWN for both lines.`;
+
+  try {
+    const response = await axios.post(
+      getGeminiEndpoint(),
+      {
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.1, topP: 0.7, maxOutputTokens: 80 },
+      },
+      { params: { key: process.env.GEMINI_API_KEY } }
+    );
+
+    const { medicationName, genericName } = parseScanResponse(extractGeminiText(response.data));
+    return {
+      medicationName: medicationName !== "UNKNOWN" ? medicationName : null,
+      genericName: genericName !== "UNKNOWN" ? genericName : null,
+    };
+  } catch {
+    return { medicationName: null, genericName: null };
   }
 };
 

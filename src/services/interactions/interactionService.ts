@@ -1,3 +1,4 @@
+import axios from "axios";
 import { Op } from "sequelize";
 import DrugInteraction from "../../schemas/interactions/drugInteractionSchema.js";
 import { BAD_REQUEST, INTERNAL_SERVER_ERROR, SUCCESS } from "../../constants/statusCode.js";
@@ -8,6 +9,54 @@ import { resolveDrugIngredients } from "../drugs/rxnavService.js";
 import { Severity } from "../../constants/severity.js";
 import InteractionHistory from "../../schemas/history/interactionHistorySchema.js";
 import Auth from "../../schemas/users/authSchema.js";
+
+const RXNAV_BASE = process.env.RXNAV_BASE_URL || "https://rxnav.nlm.nih.gov/REST";
+
+const RXNAV_SEVERITY_MAP: Record<string, Severity> = {
+  "major": Severity.HIGH,
+  "contraindicated": Severity.HIGH,
+  "severe": Severity.HIGH,
+  "moderate": Severity.MODERATE,
+  "minor": Severity.LOW,
+  "low": Severity.LOW,
+};
+
+async function rxNavInteractionLookup(
+  drugA: SelectedDrug,
+  drugB: SelectedDrug
+): Promise<{ severity: Severity; effect: string; recommendation: string; source: string } | null> {
+  const rxcuis = `${drugA.rxcui}+${drugB.rxcui}`;
+  try {
+    const { data } = await axios.get(`${RXNAV_BASE}/interaction/list.json`, {
+      params: { rxcuis },
+      timeout: 7000,
+    });
+
+    const groups = data?.fullInteractionTypeGroup ?? [];
+    for (const group of groups) {
+      const sourceName = group.sourceName || "RxNav";
+      for (const type of group.fullInteractionType ?? []) {
+        for (const pair of type.interactionPair ?? []) {
+          const rawSeverity = (pair.severity || "").toLowerCase();
+          const severity = RXNAV_SEVERITY_MAP[rawSeverity] || Severity.LOW;
+          const description: string = pair.description || "";
+          if (!description) continue;
+
+          const effect = description.length > 400 ? description.slice(0, 397) + "..." : description;
+          const recommendation =
+            severity === Severity.HIGH
+              ? `Avoid concurrent use. Consult a clinician immediately.`
+              : severity === Severity.MODERATE
+              ? `Monitor closely. Consult a pharmacist or clinician before combining.`
+              : `Generally manageable. Inform your prescriber about both medications.`;
+
+          return { severity, effect, recommendation, source: `RxNav (${sourceName})` };
+        }
+      }
+    }
+  } catch {}
+  return null;
+}
 
 const generateDrugPairs = (drugs: SelectedDrug[]) => {
   const pairs: Array<[SelectedDrug, SelectedDrug]> = [];
@@ -260,8 +309,25 @@ export const checkInteractionsService = async (
       const match = await findInteraction(drugA, drugB, normalizedDrugs);
 
       if (!match) {
-        const aiAssessment = await assessUnverifiedInteraction(drugA, drugB);
+        // 1️⃣ Try RxNav interaction API (free, no key, real clinical data)
+        const rxNavInteraction = await rxNavInteractionLookup(drugA, drugB);
+        if (rxNavInteraction) {
+          results.push({
+            drugA,
+            drugB,
+            verified: false,
+            isAiAssessed: true,
+            severity: rxNavInteraction.severity,
+            effect: rxNavInteraction.effect,
+            recommendation: rxNavInteraction.recommendation,
+            source: rxNavInteraction.source,
+            aiExplanation: null,
+          });
+          continue;
+        }
 
+        // 2️⃣ Fall back to Gemini AI assessment
+        const aiAssessment = await assessUnverifiedInteraction(drugA, drugB);
         if (aiAssessment && aiAssessment.severity !== "NONE") {
           results.push({
             drugA,
@@ -271,7 +337,7 @@ export const checkInteractionsService = async (
             severity: aiAssessment.severity,
             effect: aiAssessment.effect,
             recommendation: aiAssessment.recommendation,
-            source: "AI Analysis",
+            source: "AI Analysis (Gemini)",
             aiExplanation: aiAssessment.explanation,
           });
         } else {
@@ -281,12 +347,10 @@ export const checkInteractionsService = async (
             verified: false,
             isAiAssessed: false,
             severity: null,
-            effect: aiAssessment
-              ? "No clinically significant interaction identified for this combination."
-              : "No verified interaction found in the local database.",
+            effect: "No significant interaction identified in clinical databases or AI analysis for this combination.",
             recommendation: "Always consult a qualified healthcare professional or pharmacist before combining medications.",
-            source: "AI Analysis",
-            aiExplanation: null,
+            source: "AI Analysis (Gemini)",
+            aiExplanation: aiAssessment?.explanation ?? null,
           });
         }
         continue;
