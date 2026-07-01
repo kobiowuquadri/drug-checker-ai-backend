@@ -66,7 +66,7 @@ export const identifyMedicationFromImage = async (
         contents: [
           {
             parts: [
-              { inlineData: { mimeType, data: imageBase64 } },
+              { inline_data: { mime_type: mimeType, data: imageBase64 } },
               { text: SCAN_PROMPT },
             ],
           },

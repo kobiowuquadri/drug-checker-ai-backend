@@ -17,6 +17,8 @@ type MedRecord = { id: number; rxcui: string; genericName: string; aliases: stri
 const LOCAL_MEDICATION_PATCHES: Array<Omit<MedRecord, "id">> = [
   { rxcui: "18343", genericName: "Artemether", aliases: ["Coartem", "Lonart", "Amatem", "Lokmal", "Artefan", "Lumartem", "Artemether Lumefantrine"] },
   { rxcui: "847728", genericName: "Lumefantrine", aliases: ["Coartem", "Lonart", "Amatem", "Lokmal", "Artefan", "Lumartem", "Artemether Lumefantrine"] },
+  { rxcui: "LOCAL-ARTEROLANE", genericName: "Arterolane", aliases: ["Synriam", "Arterolane Maleate", "Arterolane Piperaquine", "Arterolane Piperaquine Phosphate"] },
+  { rxcui: "LOCAL-PIPERAQUINE", genericName: "Piperaquine", aliases: ["Synriam", "Piperaquine Phosphate", "Arterolane Piperaquine", "Arterolane Piperaquine Phosphate"] },
   { rxcui: "18346", genericName: "Artesunate", aliases: ["Camosunate", "Arinate", "Artesun", "Larinate", "Combisunate", "P-Alaxin"] },
   { rxcui: "9071", genericName: "Quinine", aliases: ["Quinimax", "Quinine Sulfate"] },
   { rxcui: "10173", genericName: "Sulfadoxine", aliases: ["Fansidar", "Maladox", "Sulfadoxine Pyrimethamine"] },

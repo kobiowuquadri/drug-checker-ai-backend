@@ -99,6 +99,10 @@ export const getDrugDetailsService = async (rxcui: string, callback: (data: Drug
 };
 
 export const resolveDrugIngredients = async (drug: SelectedDrug) => {
+  if (!/^\d+$/.test(drug.rxcui)) {
+    return [drug];
+  }
+
   try {
     const response = await axios.get(`${getRxNavBaseUrl()}/rxcui/${encodeURIComponent(drug.rxcui)}/related.json`, {
       params: { tty: "IN+MIN+PIN" },
