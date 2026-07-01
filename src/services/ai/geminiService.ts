@@ -11,6 +11,8 @@ const getGeminiEndpoint = () => {
 
 const SCAN_PROMPT = `You are a medication label scanner. Look at this image and identify the medication.
 
+The label may be from Nigeria or West Africa. Pay attention to brand names, active ingredients, NAFDAC-style packaging text, blister packs, syrups, tablets, antimalarials, antibiotics, analgesics, antihypertensives, and diabetes medicines.
+
 Return your answer in EXACTLY this format — two lines, nothing else:
 BRAND: [brand or product name printed on the label, or UNKNOWN]
 GENERIC: [active ingredient INN/generic name(s), or UNKNOWN]
@@ -19,6 +21,7 @@ Rules:
 - BRAND is the product/trade name (e.g. Synriam, Tylenol, Brufen)
 - GENERIC is the International Nonproprietary Name of the active ingredient(s). If multiple, separate with " + " (e.g. Artesunate + Piperaquine)
 - If no medication is visible or the image is too unclear, return UNKNOWN for both
+- If only the brand is visible, return the brand and UNKNOWN generic instead of guessing
 - Return ONLY the two lines above — no extra text, no explanations`;
 
 function parseScanResponse(raw: string): { medicationName: string; genericName: string } {
