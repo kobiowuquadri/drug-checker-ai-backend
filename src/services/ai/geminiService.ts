@@ -1,10 +1,19 @@
 import axios from "axios";
 import { DrugInteraction } from "../../schemas/interactions/drugInteractionSchema.js";
 import { DuplicateTherapyWarning, InteractionResult, SafetySummary, SelectedDrug } from "../../types/interactions/interaction.js";
+import { extractMedicationLabelText } from "./googleVisionService.js";
 
 const getGeminiEndpoint = () => {
   const model = process.env.GEMINI_MODEL || "gemini-2.5-flash";
   return `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+};
+
+type MedicationScanResult = {
+  medicationName: string;
+  genericName: string;
+  scanSource?: string;
+  ocrText?: string;
+  ocrError?: string;
 };
 
 // ── Medication image scan ─────────────────────────────────────────────────────
@@ -24,12 +33,186 @@ Rules:
 - If only the brand is visible, return the brand and UNKNOWN generic instead of guessing
 - Return ONLY the two lines above — no extra text, no explanations`;
 
+const SCAN_PROMPT_V2 = `You are a medication label OCR and medicine identifier for Nigerian and West African medication packaging.
+
+Read the image carefully. The label may be tilted, partly cropped, low light, or a supplement pack. Identify only text that is clearly visible.
+
+Return ONLY valid JSON in this exact shape:
+{
+  "brand": "complete product or trade name, or UNKNOWN",
+  "generic": "active ingredient INN/generic names separated with +, or UNKNOWN",
+  "visibleText": ["important visible label words"],
+  "confidence": 0.0
+}
+
+Rules:
+- Known Nigerian/West African product hints include Feroglobin B12, Synriam, Coartem, Lonart, Amatem, Lokmal, Ampiclox, Septrin, Panadol, Acylor Plus, and Acycor Plus. Use a hint only when that name is visibly present.
+- Do not return partial/cropped words as brand names. For example, return UNKNOWN instead of "Fer" if the full word is not certain.
+- If a brand is clear but ingredients are not clear, return the brand and UNKNOWN generic.
+- If ingredients are visible, use INN/generic names, not marketing claims.
+- Include supplements too, for example iron, folic acid, vitamin B12, vitamin D.
+- Do not guess a medicine from colors, packaging style, or barcode alone.
+- Keep confidence between 0 and 1. Use less than 0.6 when uncertain.`;
+
+const KNOWN_VISIBLE_BRANDS = ["Feroglobin B12", "Feroglobin", "Synriam"];
+
+const KNOWN_SCAN_PRODUCTS = [
+  {
+    pattern: /\bferoglobin(?:\s*b12)?\b/i,
+    medicationName: "Feroglobin B12",
+    genericName: "Ferrous Sulfate + Folic Acid + Vitamin B12",
+  },
+  {
+    pattern: /\bsynriam\b/i,
+    medicationName: "Synriam",
+    genericName: "Arterolane + Piperaquine",
+  },
+  {
+    pattern: /\b(coartem|lonart|amatem|lokmal|lumartem)\b/i,
+    medicationName: "Artemether Lumefantrine",
+    genericName: "Artemether + Lumefantrine",
+  },
+  {
+    pattern: /\b(p[- ]?alaxin|camosunate|arinate|artesun)\b/i,
+    medicationName: "Artesunate product",
+    genericName: "Artesunate",
+  },
+  {
+    pattern: /\b(ampiclox)\b/i,
+    medicationName: "Ampiclox",
+    genericName: "Ampicillin + Cloxacillin",
+  },
+  {
+    pattern: /\b(septrin)\b/i,
+    medicationName: "Septrin",
+    genericName: "Trimethoprim-Sulfamethoxazole",
+  },
+  {
+    pattern: /\b(panadol|emzor paracetamol|calpol)\b/i,
+    medicationName: "Paracetamol product",
+    genericName: "Paracetamol",
+  },
+  {
+    pattern: /\b(acylor|acycor)(?:\s*plus)?\b/i,
+    medicationName: "Acylor Plus",
+    genericName: "Aceclofenac + Paracetamol",
+  },
+];
+
+const normalizeScanText = (value: string) =>
+  value
+    .replace(/[^a-zA-Z0-9+ -]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const stripMarkdownCodeFences = (value: string) =>
+  value
+    .replace(/```(?:json)?/gi, "")
+    .replace(/```/g, "")
+    .trim();
+
+const extractJsonObject = (raw: string) => {
+  const cleaned = stripMarkdownCodeFences(raw);
+  const start = cleaned.indexOf("{");
+  const end = cleaned.lastIndexOf("}");
+  if (start === -1 || end === -1 || end <= start) return null;
+  return cleaned.slice(start, end + 1);
+};
+
+const extractLooseJsonField = (text: string, field: string) => {
+  const quoted = new RegExp(`"${field}"\\s*:\\s*"([^"]*)"`, "i").exec(text);
+  if (quoted?.[1]) return quoted[1];
+
+  const bare = new RegExp(`${field}\\s*:\\s*([^,\\n}\\]]+)`, "i").exec(text);
+  return bare?.[1]?.replace(/^["']|["']$/g, "").trim();
+};
+
+const identifyKnownProductFromText = (text: string) => {
+  const normalized = normalizeScanText(text);
+  return KNOWN_SCAN_PRODUCTS.find((product) => product.pattern.test(normalized)) || null;
+};
+
+const buildScanPrompt = (ocrText: string) => {
+  if (!ocrText.trim()) return SCAN_PROMPT_V2;
+
+  return [
+    SCAN_PROMPT_V2,
+    "",
+    "Google Vision OCR extracted this visible label text. Use it as supporting evidence, but still follow all rules:",
+    ocrText,
+  ].join("\n");
+};
+
+const REJECTED_SCAN_TOKENS = new Set([
+  "json",
+  "brand",
+  "generic",
+  "visibletext",
+  "confidence",
+  "null",
+  "undefined",
+  "unknown",
+]);
+
+const isRejectedScanToken = (value: string) => REJECTED_SCAN_TOKENS.has(normalizeScanText(value).toLowerCase());
+
+function safeScanValue(value: unknown, minLength: number) {
+  const text = normalizeScanText(String(value || ""));
+  if (!text || isRejectedScanToken(text)) return "UNKNOWN";
+  if (text.length < minLength) return "UNKNOWN";
+  return text;
+}
+
 function parseScanResponse(raw: string): { medicationName: string; genericName: string } {
   let medicationName = "UNKNOWN";
   let genericName = "UNKNOWN";
 
   // Strip markdown formatting Gemini sometimes adds
-  const cleaned = raw.replace(/\*\*/g, "").replace(/\*/g, "").replace(/#+\s*/g, "").trim();
+  const cleaned = stripMarkdownCodeFences(raw.replace(/\*\*/g, "").replace(/\*/g, "").replace(/#+\s*/g, ""));
+  const jsonText = extractJsonObject(cleaned);
+
+  if (jsonText) {
+    try {
+      const parsed = JSON.parse(jsonText) as {
+        brand?: unknown;
+        generic?: unknown;
+        visibleText?: unknown;
+        confidence?: unknown;
+      };
+
+      medicationName = safeScanValue(parsed.brand, 4);
+      genericName = safeScanValue(parsed.generic, 3);
+
+      const visibleText = Array.isArray(parsed.visibleText)
+        ? parsed.visibleText.map((item) => normalizeScanText(String(item))).join(" ")
+        : "";
+      const combinedText = `${visibleText} ${medicationName} ${genericName}`;
+      const knownBrand = KNOWN_VISIBLE_BRANDS.find((brand) => new RegExp(`\\b${brand}\\b`, "i").test(combinedText));
+      if (knownBrand) medicationName = knownBrand;
+
+      const confidence = Number(parsed.confidence);
+      if (Number.isFinite(confidence) && confidence < 0.45 && medicationName === "UNKNOWN") {
+        genericName = "UNKNOWN";
+      }
+
+      return { medicationName, genericName };
+    } catch {
+      const looseBrand = safeScanValue(extractLooseJsonField(jsonText, "brand"), 4);
+      const looseGeneric = safeScanValue(extractLooseJsonField(jsonText, "generic"), 3);
+      const knownFromLooseJson = identifyKnownProductFromText(`${jsonText} ${looseBrand} ${looseGeneric}`);
+
+      if (knownFromLooseJson) {
+        return {
+          medicationName: knownFromLooseJson.medicationName,
+          genericName: knownFromLooseJson.genericName,
+        };
+      }
+
+      if (looseBrand !== "UNKNOWN" || looseGeneric !== "UNKNOWN") {
+        return { medicationName: looseBrand, genericName: looseGeneric };
+      }
+    }
+  }
 
   for (const line of cleaned.split("\n").map((l) => l.trim()).filter(Boolean)) {
     const colon = line.indexOf(":");
@@ -38,16 +221,32 @@ function parseScanResponse(raw: string): { medicationName: string; genericName: 
     const val = line.slice(colon + 1).trim();
 
     if (key === "BRAND") {
-      if (val && val.toUpperCase() !== "UNKNOWN" && val.length >= 2) medicationName = val;
+      medicationName = safeScanValue(val, 4);
     } else if (key === "GENERIC") {
-      if (val && val.toUpperCase() !== "UNKNOWN" && val.length >= 2) genericName = val;
+      genericName = safeScanValue(val, 3);
     }
+  }
+
+  const knownFromCleanedText = identifyKnownProductFromText(cleaned);
+  if (knownFromCleanedText) {
+    return {
+      medicationName: knownFromCleanedText.medicationName,
+      genericName: knownFromCleanedText.genericName,
+    };
   }
 
   // Fallback: if Gemini returned a plain sentence without the required format
   if (medicationName === "UNKNOWN" && genericName === "UNKNOWN") {
-    const lines = cleaned.split("\n").map((l) => l.trim()).filter((l) => l.length > 3 && !l.includes(":"));
-    if (lines.length > 0) medicationName = lines[0];
+    const lines = cleaned
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => {
+        if (l.length <= 3 || l.includes(":") || isRejectedScanToken(l)) return false;
+        if (/^[{}\[\],]+$/.test(l)) return false;
+        if (/^["']?(brand|generic|visibleText|confidence)["']?\s*[:{\[]?/i.test(l)) return false;
+        return true;
+      });
+    if (lines.length > 0) medicationName = safeScanValue(lines[0], 4);
   }
 
   return { medicationName, genericName };
@@ -56,8 +255,23 @@ function parseScanResponse(raw: string): { medicationName: string; genericName: 
 export const identifyMedicationFromImage = async (
   imageBase64: string,
   mimeType: string = "image/jpeg"
-): Promise<{ medicationName: string; genericName: string }> => {
-  if (!process.env.GEMINI_API_KEY) return { medicationName: "UNKNOWN", genericName: "UNKNOWN" };
+): Promise<MedicationScanResult> => {
+  const ocrResult = await extractMedicationLabelText(imageBase64);
+  const knownFromOcr = identifyKnownProductFromText(ocrResult.text);
+
+  if (knownFromOcr) {
+    return {
+      medicationName: knownFromOcr.medicationName,
+      genericName: knownFromOcr.genericName,
+      scanSource: "google-vision-local-match",
+      ocrText: ocrResult.text,
+      ocrError: ocrResult.error,
+    };
+  }
+
+  if (!process.env.GEMINI_API_KEY) {
+    return { medicationName: "UNKNOWN", genericName: "UNKNOWN", scanSource: ocrResult.source, ocrText: ocrResult.text, ocrError: ocrResult.error };
+  }
 
   try {
     const response = await axios.post(
@@ -67,18 +281,36 @@ export const identifyMedicationFromImage = async (
           {
             parts: [
               { inline_data: { mime_type: mimeType, data: imageBase64 } },
-              { text: SCAN_PROMPT },
+              { text: buildScanPrompt(ocrResult.text) },
             ],
           },
         ],
-        generationConfig: { temperature: 0.1, topP: 0.7, maxOutputTokens: 80 },
+        generationConfig: { temperature: 0, topP: 0.7, maxOutputTokens: 320 },
       },
       { params: { key: process.env.GEMINI_API_KEY } }
     );
 
-    return parseScanResponse(extractGeminiText(response.data));
+    const parsed = parseScanResponse(extractGeminiText(response.data));
+    const knownFromGemini = identifyKnownProductFromText(`${parsed.medicationName} ${parsed.genericName}`);
+
+    if (knownFromGemini) {
+      return {
+        medicationName: knownFromGemini.medicationName,
+        genericName: knownFromGemini.genericName,
+        scanSource: "gemini-local-match",
+        ocrText: ocrResult.text,
+        ocrError: ocrResult.error,
+      };
+    }
+
+    return {
+      ...parsed,
+      scanSource: ocrResult.source === "google-vision" ? "google-vision+gemini" : "gemini",
+      ocrText: ocrResult.text,
+      ocrError: ocrResult.error,
+    };
   } catch {
-    return { medicationName: "UNKNOWN", genericName: "UNKNOWN" };
+    return { medicationName: "UNKNOWN", genericName: "UNKNOWN", scanSource: ocrResult.source, ocrText: ocrResult.text, ocrError: ocrResult.error };
   }
 };
 

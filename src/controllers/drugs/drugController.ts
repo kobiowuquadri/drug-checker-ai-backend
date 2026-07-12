@@ -53,9 +53,9 @@ export const scanMedicationController = async (req: Request, res: Response) => {
   }
 
   try {
-    const { medicationName, genericName } = await identifyMedicationFromImage(image, mimeType || "image/jpeg");
+    const scanResult = await identifyMedicationFromImage(image, mimeType || "image/jpeg");
     return res.status(SUCCESS).json(
-      messageHandler("Scan completed.", true, SUCCESS, { medicationName, genericName })
+      messageHandler("Scan completed.", true, SUCCESS, scanResult)
     );
   } catch (error) {
     return res.status(INTERNAL_SERVER_ERROR).json(

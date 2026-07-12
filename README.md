@@ -92,6 +92,7 @@ JWT_ACCESS_SECRET=change_me_access_secret
 JWT_REFRESH_SECRET=change_me_refresh_secret
 GEMINI_API_KEY=
 GEMINI_MODEL=gemini-2.5-flash
+GOOGLE_CLOUD_VISION_API_KEY=
 USE_GEMINI_PAIR_EXPLANATIONS=false
 RXNAV_BASE_URL=https://rxnav.nlm.nih.gov/REST
 AUTO_SEED_INTERACTIONS=true
@@ -213,6 +214,27 @@ Uses RxNav:
 ```text
 https://rxnav.nlm.nih.gov/REST/drugs.json?name={query}
 ```
+
+### Scan Medication Label
+
+```http
+POST /api/drugs/scan
+```
+
+```json
+{
+  "image": "<base64-image-without-data-url-prefix>",
+  "mimeType": "image/jpeg"
+}
+```
+
+The scan pipeline is:
+
+1. Google Cloud Vision OCR extracts readable label text when `GOOGLE_CLOUD_VISION_API_KEY` is configured.
+2. The backend checks local Nigerian/common product aliases such as Feroglobin, Synriam, Coartem, Ampiclox, Septrin, and Panadol.
+3. Gemini Vision interprets the image with the OCR text as supporting evidence when local matching is not enough.
+
+This avoids trusting weak partial OCR like `Fer` as a complete medicine name.
 
 ### Get Drug Details
 

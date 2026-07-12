@@ -34,6 +34,10 @@ const LOCAL_MEDICATION_PATCHES: Array<Omit<MedRecord, "id">> = [
   { rxcui: "2551", genericName: "Ciprofloxacin", aliases: ["Ciprotab", "Ciproxin", "Cipro"] },
   { rxcui: "17767", genericName: "Amlodipine", aliases: ["Amlovar", "Amlodis", "Norvasc"] },
   { rxcui: "6809", genericName: "Metformin", aliases: ["Glucophage", "Diabetmin", "Glycomet"] },
+  { rxcui: "LOCAL-ACECLOFENAC", genericName: "Aceclofenac", aliases: ["Acylor", "Acylor Plus", "Acycor", "Acycor Plus"] },
+  { rxcui: "4582", genericName: "Ferrous Sulfate", aliases: ["Feroglobin", "Feroglobin B12", "Iron", "Iron Supplement"] },
+  { rxcui: "4614", genericName: "Folic Acid", aliases: ["Feroglobin", "Feroglobin B12", "Folate", "Vitamin B9"] },
+  { rxcui: "9878", genericName: "Vitamin B12", aliases: ["Feroglobin", "Feroglobin B12", "Cyanocobalamin"] },
 ];
 
 const normalize = (value: string) =>
@@ -105,6 +109,7 @@ function scoreMatch(med: MedRecord, q: string): number {
   if (aliases.some((alias) => alias === q)) return 95;
   if (name.startsWith(q)) return 80;
   if (aliases.some((alias) => alias.startsWith(q))) return 75;
+  if (q.length < 4) return 0;
   if (name.includes(q)) return 50;
   if (aliases.some((alias) => alias.includes(q))) return 45;
   const tokens = q.split(" ").filter(Boolean);

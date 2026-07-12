@@ -16,7 +16,8 @@ export const config = {
     integrations: {
         rxnavBaseUrl: process.env.RXNAV_BASE_URL || 'https://rxnav.nlm.nih.gov/REST',
         geminiApiKey: process.env.GEMINI_API_KEY,
-        geminiModel: process.env.GEMINI_MODEL || 'gemini-2.5-flash'
+        geminiModel: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
+        googleCloudVisionApiKey: process.env.GOOGLE_CLOUD_VISION_API_KEY || process.env.GOOGLE_VISION_API_KEY || process.env.GOOGLE_CLOUD_VISON_API_KEY
     },
     development: {
         username: process.env.DB_USER,
