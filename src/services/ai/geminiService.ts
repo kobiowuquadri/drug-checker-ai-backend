@@ -46,7 +46,7 @@ Return ONLY valid JSON in this exact shape:
 }
 
 Rules:
-- Known Nigerian/West African product hints include Feroglobin B12, Synriam, Coartem, Lonart, Amatem, Lokmal, Ampiclox, Septrin, Panadol, Acylor Plus, and Acycor Plus. Use a hint only when that name is visibly present.
+- Known Nigerian/West African product hints include Feroglobin B12, Synriam, Coartem, Lonart, Amatem, Lokmal, Artequick, Ampiclox, Septrin, Panadol, Acylor Plus, Acycor Plus, Inbu-400, and Ibuprofen. Use a hint only when that name is visibly present.
 - Do not return partial/cropped words as brand names. For example, return UNKNOWN instead of "Fer" if the full word is not certain.
 - If a brand is clear but ingredients are not clear, return the brand and UNKNOWN generic.
 - If ingredients are visible, use INN/generic names, not marketing claims.
@@ -73,6 +73,11 @@ const KNOWN_SCAN_PRODUCTS = [
     genericName: "Artemether + Lumefantrine",
   },
   {
+    pattern: /\b(arte\s*quick|artequick|[a-z]{2,}\s+quick)\b|(?:artemisinin.*piperaquine|piperaquine.*artemisinin)/i,
+    medicationName: "Artequick",
+    genericName: "Artemisinin + Piperaquine",
+  },
+  {
     pattern: /\b(p[- ]?alaxin|camosunate|arinate|artesun)\b/i,
     medicationName: "Artesunate product",
     genericName: "Artesunate",
@@ -91,6 +96,11 @@ const KNOWN_SCAN_PRODUCTS = [
     pattern: /\b(panadol|emzor paracetamol|calpol)\b/i,
     medicationName: "Paracetamol product",
     genericName: "Paracetamol",
+  },
+  {
+    pattern: /\b(inbu(?:[-\s]?400)?|ibuprofen)\b/i,
+    medicationName: "Inbu-400",
+    genericName: "Ibuprofen",
   },
   {
     pattern: /\b(acylor|acycor)(?:\s*plus)?\b/i,
