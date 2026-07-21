@@ -68,16 +68,42 @@ async function rxNavLookup(raw: string): Promise<BarcodeResult | null> {
   return null;
 }
 
+async function upcItemDbLookup(raw: string): Promise<BarcodeResult | null> {
+  const digits = raw.replace(/\D/g, "");
+  if (!digits) return null;
+
+  try {
+    const { data } = await axios.get("https://api.upcitemdb.com/prod/trial/lookup", {
+      params: { upc: digits },
+      timeout: TIMEOUT,
+    });
+    const item = data?.items?.[0];
+    const title = String(item?.title || "").trim();
+    if (!title) return null;
+
+    return {
+      medicationName: title,
+      genericName: null,
+      rxcui: null,
+      source: "UPCitemdb",
+    };
+  } catch {
+    return null;
+  }
+}
+
 export async function lookupBarcodeService(barcodeValue: string): Promise<BarcodeResult> {
-  const [fdaResult, rxNavResult] = await Promise.allSettled([
+  const [fdaResult, rxNavResult, upcResult] = await Promise.allSettled([
     openFDALookup(barcodeValue),
     rxNavLookup(barcodeValue),
+    upcItemDbLookup(barcodeValue),
   ]);
 
   const fda = fdaResult.status === "fulfilled" ? fdaResult.value : null;
   const rxnav = rxNavResult.status === "fulfilled" ? rxNavResult.value : null;
+  const upc = upcResult.status === "fulfilled" ? upcResult.value : null;
 
-  if (fda || rxnav) return fda ?? rxnav!;
+  if (fda || rxnav || upc) return fda ?? rxnav ?? upc!;
 
   // Neither US database has this barcode (common for non-US products).
   // Try Gemini as a last resort — it may recognise common international barcodes.
