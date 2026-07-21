@@ -4,6 +4,32 @@ Drug Checker AI is an Express.js + TypeScript backend for searching drugs throug
 
 Gemini is only used to explain interaction records that already exist in the local MySQL interaction database. It is not used as the source of medical interaction data.
 
+## Project Summary
+
+Drug Checker AI helps users make safer medication decisions by combining:
+
+- medication search by generic or brand name
+- local Nigerian/common medicine aliases for hackathon-friendly search coverage
+- RxNav integration for standardized drug concepts
+- verified local drug-drug interaction records
+- duplicate therapy warnings
+- AI explanations based only on verified interaction data
+- interaction history and report generation
+
+The safest user workflow is to type the generic active ingredient printed on the medication pack. Camera scan and barcode lookup are supported by the frontend as best-effort helpers, but OCR and barcode databases can miss local medicine packs.
+
+## Medical Safety Disclaimer
+
+This application is for educational and hackathon demonstration purposes. It does not replace a doctor, pharmacist, or other qualified healthcare professional.
+
+Important safety rules in this codebase:
+
+- Gemini must not invent drug interaction data.
+- Verified interactions come from the local `drug_interactions` table.
+- AI summaries and explanations are generated only after verified data is found.
+- If no verified local interaction is found, the app should not claim that a combination is safe.
+- Users should confirm medication decisions with a clinician or pharmacist.
+
 ## Tech Stack
 
 - Node.js
@@ -16,6 +42,8 @@ Gemini is only used to explain interaction records that already exist in the loc
 - axios
 - RxNav API
 - Google Gemini API
+- Optional Google Cloud Vision OCR
+- Frontend free OCR fallback with Tesseract.js
 
 ## Project Structure
 
@@ -70,6 +98,14 @@ If PowerShell blocks `npm.ps1`, run the same script through:
 ```powershell
 npm.cmd run dev
 ```
+
+Recommended local startup for the full app:
+
+1. Start MySQL.
+2. Start this backend on `http://localhost:5000`.
+3. Start the frontend on `http://localhost:3000`.
+4. Register or log in from the frontend.
+5. Search by generic names such as `ibuprofen`, `aspirin`, `warfarin`, `metformin`, or `lisinopril`.
 
 Build and start:
 
@@ -230,11 +266,38 @@ POST /api/drugs/scan
 
 The scan pipeline is:
 
-1. Google Cloud Vision OCR extracts readable label text when `GOOGLE_CLOUD_VISION_API_KEY` is configured.
-2. The backend checks local Nigerian/common product aliases such as Feroglobin, Synriam, Coartem, Ampiclox, Septrin, and Panadol.
+1. Google Cloud Vision OCR extracts readable label text when `GOOGLE_CLOUD_VISION_API_KEY` is configured and billing is enabled.
+2. The backend checks local Nigerian/common product aliases such as Feroglobin, Synriam, Coartem, Artequick, Inbu-400, Ampiclox, Septrin, and Panadol.
 3. Gemini Vision interprets the image with the OCR text as supporting evidence when local matching is not enough.
+4. The frontend also has a free Tesseract.js OCR fallback for hackathon use when paid OCR is unavailable.
 
 This avoids trusting weak partial OCR like `Fer` as a complete medicine name.
+
+Camera scan is best effort. Poor lighting, glare, handwriting, stylized fonts, and cropped labels can produce wrong text. If scan results are wrong, type the generic active ingredient manually.
+
+Example:
+
+```text
+Inbu-400 -> Ibuprofen
+Artequick -> Artemisinin + Piperaquine
+Acycor Plus -> Aceclofenac + Paracetamol
+Feroglobin B12 -> Iron + Folic Acid + Vitamin B12
+```
+
+### Barcode Lookup
+
+```http
+POST /api/drugs/barcode
+```
+
+```json
+{
+  "barcodeValue": "1234567890123",
+  "format": "ean_13"
+}
+```
+
+Barcode lookup is best effort. Many Nigerian medication barcodes are not indexed in public medicine databases, so barcode failure is expected for some local packs. The recommended fallback is camera label scan or typing the generic ingredient.
 
 ### Get Drug Details
 
@@ -617,6 +680,30 @@ Each seed row stores:
 - `effect`
 - `recommendation`
 - `source`
+
+## Demo Combinations
+
+Useful combinations for judging/demo:
+
+```text
+Ibuprofen + Aspirin -> MODERATE
+Aspirin + Warfarin -> HIGH
+Metformin + Alcohol -> MODERATE/HIGH depending on seeded wording
+Lisinopril + Potassium Supplement -> HIGH
+Simvastatin + Clarithromycin -> HIGH
+Ciprofloxacin + Tizanidine -> HIGH
+```
+
+Useful camera/search demo terms:
+
+```text
+Inbu-400 -> Ibuprofen
+Artequick -> Artemisinin + Piperaquine
+Acycor Plus -> Aceclofenac + Paracetamol
+P-Alaxin -> Dihydroartemisinin + Piperaquine
+TLD -> Tenofovir + Lamivudine + Dolutegravir
+RHZE -> Rifampicin + Isoniazid + Pyrazinamide + Ethambutol
+```
 
 ## Database Notes
 
